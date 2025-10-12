@@ -1,0 +1,85 @@
+version: '0.1'
+
+services:
+  # Frontend service (Bun/Vite)
+  frontend:
+    image: manikanteshwarareddy/minis3front:v1.0
+    restart: always
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000
+
+  # Backend service (Python/FastAPI)
+  backend:
+    image: manikanteshwarareddy/minis3back:v1.0
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - redis
+      - minio
+    environment:
+      # MongoDB
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017
+      
+      # Redis
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      
+      # MinIO Configuration
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      
+      # AWS S3 Configuration (Separate from MinIO)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+
+  # MongoDB service
+  mongo:
+    image: mongo:latest
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+
+  # Redis service
+  redis:
+    image: redis:latest
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
+  # MinIO service - using official MinIO image
+  minio:
+    image: minio/minio:latest
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  mongo_data:
+  redis_data:
+  minio_data:

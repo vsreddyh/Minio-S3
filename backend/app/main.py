@@ -18,6 +18,7 @@ from uuid import uuid4
 import io
 import boto3
 from botocore.exceptions import ClientError
+import redis
 
 from .schemas import Image, ImageOut
 
@@ -32,8 +33,10 @@ MINIO_BUCKET = os.getenv("MINIO_BUCKET", "neilbucket")
 # AWS S3 Configuration (fallback)
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "minioands3")
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # print(f"AWS S3 Config: {AWS_ACCESS_KEY_ID}, {AWS_REGION}, {AWS_S3_BUCKET}")
 
 app = FastAPI(title="NEIL Backend - FastAPI")
@@ -94,6 +97,15 @@ def startup_db_client():
     except Exception:
         app.state.s3_client = None
 
+    # initialize Redis client (cache)
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        # ping to ensure connection
+        r.ping()
+        app.state.redis = r
+    except Exception:
+        app.state.redis = None
+
 
 @app.on_event("shutdown")
 def shutdown_db_client():
@@ -116,7 +128,8 @@ def health_check():
         "services": {
             "mongodb": {"status": "unknown", "details": None},
             "minio": {"status": "unknown", "details": None},
-            "aws_s3": {"status": "unknown", "details": None}
+            "aws_s3": {"status": "unknown", "details": None},
+            "redis": {"status": "unknown", "details": None}
         }
     }
     
@@ -163,6 +176,20 @@ def health_check():
     except Exception as e:
         health_status["services"]["aws_s3"]["status"] = "error"
         health_status["services"]["aws_s3"]["details"] = str(e)
+
+    # Check Redis
+    try:
+        r = getattr(app.state, "redis", None)
+        if r is not None:
+            r.ping()
+            health_status["services"]["redis"]["status"] = "healthy"
+            health_status["services"]["redis"]["details"] = f"Connected to {REDIS_URL}"
+        else:
+            health_status["services"]["redis"]["status"] = "unavailable"
+            health_status["services"]["redis"]["details"] = "Redis client not initialized"
+    except Exception as e:
+        health_status["services"]["redis"]["status"] = "error"
+        health_status["services"]["redis"]["details"] = str(e)
     
     # Determine overall health status
     service_statuses = [service["status"] for service in health_status["services"].values()]
@@ -215,14 +242,31 @@ def list_images():
         raise HTTPException(status_code=503, detail="Database not available")
 
     docs = list(app.state.db.images.find({}, {"_id": 0}))
+
+    def cache_key(name: str) -> str:
+        return f"signedurl:{name}"
+
+    r = getattr(app.state, "redis", None)
     minio_client = getattr(app.state, "minio_client", None)
     s3_client = getattr(app.state, "s3_client", None)
-    
+
     for d in docs:
+        url = None
+        key = cache_key(d['name'])
+        # try cache first
+        if r is not None:
+            try:
+                url = r.get(key)
+            except Exception:
+                url = None
+        if url:
+            d['object_url'] = url
+            continue
+
+        # compute signed URL
         try:
             object_exists_in_minio = False
             if minio_client:
-                # Check if object exists in MinIO
                 try:
                     minio_client.stat_object(MINIO_BUCKET, d['name'])
                     object_exists_in_minio = True
@@ -230,61 +274,29 @@ def list_images():
                     object_exists_in_minio = False
 
             if minio_client and object_exists_in_minio:
-                d['object_url'] = minio_client.presigned_get_object(MINIO_BUCKET, d['name'], expires=timedelta(hours=1))
-                print(f"MinIO URL: {d['object_url']}")
+                url = minio_client.presigned_get_object(MINIO_BUCKET, d['name'], expires=timedelta(hours=1))
             elif s3_client:
-                d['object_url'] = s3_client.generate_presigned_url(
+                url = s3_client.generate_presigned_url(
                     'get_object',
                     Params={'Bucket': AWS_S3_BUCKET, 'Key': f"minio/neilbucket/{d['name']}"},
-                    ExpiresIn=3600  # 1 hour
+                    ExpiresIn=3600
                 )
-                print(f"AWS S3 URL: {d['object_url']}")
             else:
-                d['object_url'] = None
-                print("No storage service available")
+                url = None
         except Exception as e:
             print(f"Error generating signed URL: {e}")
-            d['object_url'] = None
+            url = None
+
+        d['object_url'] = url
+        # cache the result with TTL slightly less than signed URL expiry (e.g., 55 minutes)
+        if r is not None and url:
+            try:
+                r.setex(key, 55 * 60, url)
+            except Exception:
+                pass
 
     print(docs)
     return docs
-
-
-
-# @app.get("/images/{name}", response_model=ImageOut)
-# def get_image(name: str):
-    """Return image metadata by name. 503 if DB missing, 404 if not found."""
-    if app.state.db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-
-    doc = app.state.db.images.find_one({"name": name}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Image not found")
-    
-    minio_client = getattr(app.state, "minio_client", None)
-    s3_client = getattr(app.state, "s3_client", None)
-    
-    try:
-        # Try MinIO first
-        if minio_client:
-            doc['object_url'] = minio_client.presigned_get_object(MINIO_BUCKET, doc['name'], expires=timedelta(hours=1))
-        # Fallback to AWS S3
-        elif s3_client:
-            doc['object_url'] = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': AWS_S3_BUCKET, 'Key': doc['name']},
-                ExpiresIn=3600  # 1 hour
-            )
-        else:
-            doc['object_url'] = None
-    except Exception as e:
-        print(f"Error generating signed URL: {e}")
-        doc['object_url'] = None
-    
-    print(doc)
-    return ImageOut(**doc)
-
-
 
 @app.post("/images/upload", response_model=dict)
 async def upload_image(file: UploadFile = File(...), createdAt: str = Form(None)):
