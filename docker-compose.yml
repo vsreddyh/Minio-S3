@@ -1,4 +1,3 @@
-version: '0.1'
 
 services:
   # Frontend service (Bun/Vite)
@@ -43,7 +42,7 @@ services:
 
   # MongoDB service
   mongo:
-    image: mongo:latest
+    image: mongo:noble
     restart: always
     ports:
       - "27017:27017"

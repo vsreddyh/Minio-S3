@@ -24,11 +24,11 @@ from .schemas import Image, ImageOut
 
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("MONGO_DB", "neil_db")
+DB_NAME = os.getenv("MONGO_DB", "minios3_db")
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "neilbucket")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "newbucket")
 
 # AWS S3 Configuration (fallback)
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
@@ -39,7 +39,7 @@ AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "minioands3")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # print(f"AWS S3 Config: {AWS_ACCESS_KEY_ID}, {AWS_REGION}, {AWS_S3_BUCKET}")
 
-app = FastAPI(title="NEIL Backend - FastAPI")
+app = FastAPI(title="minios3 Backend - FastAPI")
 
 # Add CORS middleware to allow frontend requests
 app.add_middleware(
@@ -278,7 +278,7 @@ def list_images():
             elif s3_client:
                 url = s3_client.generate_presigned_url(
                     'get_object',
-                    Params={'Bucket': AWS_S3_BUCKET, 'Key': f"minio/neilbucket/{d['name']}"},
+                    Params={'Bucket': AWS_S3_BUCKET, 'Key': f"minio/newbucket/{d['name']}"},
                     ExpiresIn=3600
                 )
             else:

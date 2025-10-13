@@ -16,7 +16,7 @@ export default function Header({ onImageUploaded }) {
     <>
       <header className="app-header">
         <div className="header-content">
-          <h1 className="site-title">NEIL Gallery</h1>
+          <h1 className="site-title">Gallery</h1>
           <button 
             className="upload-btn"
             onClick={() => setShowUploadModal(true)}
