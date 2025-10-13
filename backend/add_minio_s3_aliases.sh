@@ -13,8 +13,8 @@ set -euo pipefail
 # Requires: mc (MinIO client) and redis-cli in PATH
 
 # -------- MinIO / S3 config --------
-: "${MINIO_ALIAS:=minio}"
-: "${MINIO_ENDPOINT:=http://localhost:9000}"
+MINIO_ALIAS="${MINIO_ALIAS:-minio}"
+: "${MINIO_ENDPOINT1:=http://localhost:9000}"
 : "${MINIO_ACCESS_KEY:=minioadmin}"
 : "${MINIO_SECRET_KEY:=minioadmin}"
 
@@ -28,8 +28,8 @@ set -euo pipefail
 
 # Skip MinIO if SKIP_MINIO is set to true
 if [[ "${SKIP_MINIO:-false}" != "true" ]]; then
-	echo "Configuring mc alias for MinIO: ${MINIO_ALIAS} -> ${MINIO_ENDPOINT}"
-	if mc alias set --path "${MC_PATH_STYLE}" "${MINIO_ALIAS}" "${MINIO_ENDPOINT}" "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}" 1>/dev/null; then
+	echo "Configuring mc alias for MinIO: ${MINIO_ALIAS} -> ${MINIO_ENDPOINT1}"
+	if mc alias set --path "${MC_PATH_STYLE}" "${MINIO_ALIAS}" "${MINIO_ENDPOINT1}" "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}" 1>/dev/null; then
 		echo "OK: ${MINIO_ALIAS}"
 	else
 		echo "WARNING: Could not configure MinIO alias (MinIO server may be unavailable)"

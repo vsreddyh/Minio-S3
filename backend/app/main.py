@@ -281,7 +281,7 @@ def list_images():
                     "get_object",
                     Params={
                         "Bucket": AWS_S3_BUCKET,
-                        "Key": f"minio/{MINIO_BUCKET}/{d['name']}",
+                        "Key": f"{d['name']}",
                     },
                     ExpiresIn=3600,
                 )
@@ -301,6 +301,37 @@ def list_images():
 
     print(docs)
     return docs
+
+
+@app.get("/images/file/{name}")
+def get_image_file(name: str):
+    """Return the image bytes by object name from MinIO only."""
+    minio_client = getattr(app.state, "minio_client", None)
+    if minio_client is None:
+        raise HTTPException(status_code=503, detail="Storage not available")
+
+    try:
+        stat = minio_client.stat_object(MINIO_BUCKET, name)
+        obj = minio_client.get_object(MINIO_BUCKET, name)
+
+        def minio_stream():
+            try:
+                for chunk in obj.stream(32 * 1024):
+                    yield chunk
+            finally:
+                obj.close()
+                obj.release_conn()
+
+        media_type = getattr(stat, "content_type", None) or "application/octet-stream"
+        headers = {"Content-Disposition": f'inline; filename="{name}"'}
+        return StreamingResponse(minio_stream(), media_type=media_type, headers=headers)
+    except S3Error as e:
+        code = getattr(e, "code", None)
+        if code in ("NoSuchKey", "NoSuchObject", "404"):
+            raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=500, detail=f"MinIO error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MinIO error: {e}")
 
 
 @app.post("/images/upload", response_model=dict)

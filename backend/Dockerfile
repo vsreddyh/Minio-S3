@@ -26,8 +26,8 @@ RUN curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/b
 WORKDIR /app1
 
 # Python deps
-COPY ./requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+COPY ./requirements.txt /app1/requirements.txt
+RUN pip3 install --no-cache-dir -r /app1/requirements.txt
 
 # Add the alias script
 COPY add_minio_s3_aliases.sh /usr/local/bin/add_minio_s3_aliases.sh
