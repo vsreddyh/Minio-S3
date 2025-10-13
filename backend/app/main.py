@@ -23,7 +23,7 @@ import redis
 from .schemas import Image, ImageOut
 
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:password123@localhost:27017")
 DB_NAME = os.getenv("MONGO_DB", "minios3_db")
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
@@ -36,7 +36,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "minioands3")
 # Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://:redispassword123@localhost:6379/0")
 # print(f"AWS S3 Config: {AWS_ACCESS_KEY_ID}, {AWS_REGION}, {AWS_S3_BUCKET}")
 
 app = FastAPI(title="minios3 Backend - FastAPI")
@@ -73,21 +73,26 @@ def startup_db_client():
         app.state.db = None
     # initialize MinIO client
     try:
-        mc = Minio(MINIO_ENDPOINT, access_key=MINIO_ACCESS_KEY, secret_key=MINIO_SECRET_KEY, secure=False)
+        mc = Minio(
+            MINIO_ENDPOINT,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=False,
+        )
         # test connection by listing buckets (will raise on failure)
         mc.list_buckets()
         app.state.minio_client = mc
     except Exception:
         app.state.minio_client = None
-    
+
     # initialize AWS S3 client (fallback)
     try:
         if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
             s3_client = boto3.client(
-                's3',
+                "s3",
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-                region_name=AWS_REGION
+                region_name=AWS_REGION,
             )
             # test connection by listing buckets
             s3_client.list_buckets()
@@ -129,10 +134,10 @@ def health_check():
             "mongodb": {"status": "unknown", "details": None},
             "minio": {"status": "unknown", "details": None},
             "aws_s3": {"status": "unknown", "details": None},
-            "redis": {"status": "unknown", "details": None}
-        }
+            "redis": {"status": "unknown", "details": None},
+        },
     }
-    
+
     # Check MongoDB
     try:
         if app.state.db is not None:
@@ -142,11 +147,13 @@ def health_check():
             health_status["services"]["mongodb"]["details"] = f"Connected to {DB_NAME}"
         else:
             health_status["services"]["mongodb"]["status"] = "unavailable"
-            health_status["services"]["mongodb"]["details"] = "MongoDB client not initialized"
+            health_status["services"]["mongodb"][
+                "details"
+            ] = "MongoDB client not initialized"
     except Exception as e:
         health_status["services"]["mongodb"]["status"] = "error"
         health_status["services"]["mongodb"]["details"] = str(e)
-    
+
     # Check MinIO
     try:
         minio_client = getattr(app.state, "minio_client", None)
@@ -154,14 +161,18 @@ def health_check():
             # Try to list buckets to verify connection
             minio_client.list_buckets()
             health_status["services"]["minio"]["status"] = "healthy"
-            health_status["services"]["minio"]["details"] = f"Connected to {MINIO_ENDPOINT}"
+            health_status["services"]["minio"][
+                "details"
+            ] = f"Connected to {MINIO_ENDPOINT}"
         else:
             health_status["services"]["minio"]["status"] = "unavailable"
-            health_status["services"]["minio"]["details"] = "MinIO client not initialized"
+            health_status["services"]["minio"][
+                "details"
+            ] = "MinIO client not initialized"
     except Exception as e:
         health_status["services"]["minio"]["status"] = "error"
         health_status["services"]["minio"]["details"] = str(e)
-    
+
     # Check AWS S3
     try:
         s3_client = getattr(app.state, "s3_client", None)
@@ -169,10 +180,14 @@ def health_check():
             # Try to list buckets to verify connection
             s3_client.list_buckets()
             health_status["services"]["aws_s3"]["status"] = "healthy"
-            health_status["services"]["aws_s3"]["details"] = f"Connected to S3 in {AWS_REGION}"
+            health_status["services"]["aws_s3"][
+                "details"
+            ] = f"Connected to S3 in {AWS_REGION}"
         else:
             health_status["services"]["aws_s3"]["status"] = "unavailable"
-            health_status["services"]["aws_s3"]["details"] = "AWS S3 client not initialized (credentials may be missing)"
+            health_status["services"]["aws_s3"][
+                "details"
+            ] = "AWS S3 client not initialized (credentials may be missing)"
     except Exception as e:
         health_status["services"]["aws_s3"]["status"] = "error"
         health_status["services"]["aws_s3"]["details"] = str(e)
@@ -186,14 +201,18 @@ def health_check():
             health_status["services"]["redis"]["details"] = f"Connected to {REDIS_URL}"
         else:
             health_status["services"]["redis"]["status"] = "unavailable"
-            health_status["services"]["redis"]["details"] = "Redis client not initialized"
+            health_status["services"]["redis"][
+                "details"
+            ] = "Redis client not initialized"
     except Exception as e:
         health_status["services"]["redis"]["status"] = "error"
         health_status["services"]["redis"]["details"] = str(e)
-    
+
     # Determine overall health status
-    service_statuses = [service["status"] for service in health_status["services"].values()]
-    
+    service_statuses = [
+        service["status"] for service in health_status["services"].values()
+    ]
+
     if "error" in service_statuses:
         health_status["status"] = "degraded"
     elif all(status in ["healthy", "unavailable"] for status in service_statuses):
@@ -204,32 +223,12 @@ def health_check():
             health_status["status"] = "degraded"
     else:
         health_status["status"] = "degraded"
-    
+
     # Return appropriate HTTP status code
     if health_status["status"] == "healthy":
         return health_status
     else:
         raise HTTPException(status_code=503, detail=health_status)
-
-
-def _img_doc_to_schema(doc) -> Image:
-    """Convert a MongoDB image document to the Image schema."""
-    return Image(name=doc["name"], createdAt=doc["createdAt"]) 
-
-
-@app.post("/images", response_model=Image)
-def create_image(image: Image):
-    """Create an image metadata record in MongoDB.
-
-    Requires the database to be available. Returns the saved image data.
-    """
-    if app.state.db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-
-    coll = app.state.db.images
-    doc = {"name": image.name, "createdAt": image.createdAt}
-    coll.insert_one(doc)
-    return image
 
 
 @app.get("/images", response_model=List[ImageOut])
@@ -252,7 +251,7 @@ def list_images():
 
     for d in docs:
         url = None
-        key = cache_key(d['name'])
+        key = cache_key(d["name"])
         # try cache first
         if r is not None:
             try:
@@ -260,7 +259,7 @@ def list_images():
             except Exception:
                 url = None
         if url:
-            d['object_url'] = url
+            d["object_url"] = url
             continue
 
         # compute signed URL
@@ -268,18 +267,23 @@ def list_images():
             object_exists_in_minio = False
             if minio_client:
                 try:
-                    minio_client.stat_object(MINIO_BUCKET, d['name'])
+                    minio_client.stat_object(MINIO_BUCKET, d["name"])
                     object_exists_in_minio = True
                 except S3Error:
                     object_exists_in_minio = False
 
             if minio_client and object_exists_in_minio:
-                url = minio_client.presigned_get_object(MINIO_BUCKET, d['name'], expires=timedelta(hours=1))
+                url = minio_client.presigned_get_object(
+                    MINIO_BUCKET, d["name"], expires=timedelta(hours=1)
+                )
             elif s3_client:
                 url = s3_client.generate_presigned_url(
-                    'get_object',
-                    Params={'Bucket': AWS_S3_BUCKET, 'Key': f"minio/newbucket/{d['name']}"},
-                    ExpiresIn=3600
+                    "get_object",
+                    Params={
+                        "Bucket": AWS_S3_BUCKET,
+                        "Key": f"minio/{MINIO_BUCKET}/{d['name']}",
+                    },
+                    ExpiresIn=3600,
                 )
             else:
                 url = None
@@ -287,7 +291,7 @@ def list_images():
             print(f"Error generating signed URL: {e}")
             url = None
 
-        d['object_url'] = url
+        d["object_url"] = url
         # cache the result with TTL slightly less than signed URL expiry (e.g., 55 minutes)
         if r is not None and url:
             try:
@@ -297,6 +301,7 @@ def list_images():
 
     print(docs)
     return docs
+
 
 @app.post("/images/upload", response_model=dict)
 async def upload_image(file: UploadFile = File(...), createdAt: str = Form(None)):
@@ -315,9 +320,15 @@ async def upload_image(file: UploadFile = File(...), createdAt: str = Form(None)
     """
     minio_client = getattr(app.state, "minio_client", None)
     if minio_client is None:
-        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": "Storage not available"})
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "Storage not available"},
+        )
     if app.state.db is None:
-        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": "Database not available"})
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "Database not available"},
+        )
 
     # create bucket if not exists
     try:
@@ -325,10 +336,13 @@ async def upload_image(file: UploadFile = File(...), createdAt: str = Form(None)
         if not found:
             minio_client.make_bucket(MINIO_BUCKET)
     except S3Error as e:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": f"MinIO error: {e}"})
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": f"MinIO error: {e}"},
+        )
 
     # pick a safe object name
-    ext = ''
+    ext = ""
     if "." in file.filename:
         ext = file.filename.split(".")[-1]
     obj_name = f"{uuid4().hex}.{ext}" if ext else uuid4().hex
@@ -336,13 +350,22 @@ async def upload_image(file: UploadFile = File(...), createdAt: str = Form(None)
     # read bytes and upload to MinIO
     body = await file.read()
     try:
-        minio_client.put_object(MINIO_BUCKET, obj_name, data=io.BytesIO(body), length=len(body), content_type=file.content_type)
+        minio_client.put_object(
+            MINIO_BUCKET,
+            obj_name,
+            data=io.BytesIO(body),
+            length=len(body),
+            content_type=file.content_type,
+        )
     except S3Error as e:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": f"MinIO upload failed: {e}"})
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": f"MinIO upload failed: {e}"},
+        )
 
     created_dt = datetime.utcnow()
 
     # persist metadata in MongoDB and return result
-    doc = {"name": obj_name, "createdAt": created_dt }
+    doc = {"name": obj_name, "createdAt": created_dt}
     app.state.db.images.insert_one(doc)
     return {"name": obj_name, "createdAt": created_dt.isoformat()}

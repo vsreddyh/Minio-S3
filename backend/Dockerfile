@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     curl ca-certificates gnupg unzip \
     python3 python3-pip python3-venv python3-dev build-essential \
     cron \
-    && rm -rf /var/lib/apt/lists/*  # [web:58][web:55]
+	redis-tools \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install AWS CLI v2
 RUN curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip" \
@@ -20,17 +21,17 @@ RUN curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tm
 
 # Install MinIO Client (mc)
 RUN curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
- && chmod +x /usr/local/bin/mc  # [web:44][web:45]
+ && chmod +x /usr/local/bin/mc
 
 WORKDIR /app1
 
 # Python deps
 COPY ./requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt  # [web:26]
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
 # Add the alias script
 COPY add_minio_s3_aliases.sh /usr/local/bin/add_minio_s3_aliases.sh
-RUN chmod +x /usr/local/bin/add_minio_s3_aliases.sh  # [web:55]
+RUN chmod +x /usr/local/bin/add_minio_s3_aliases.sh 
 
 # App code
 COPY . /app1
