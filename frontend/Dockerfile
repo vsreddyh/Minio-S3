@@ -14,6 +14,11 @@ COPY ./package*.json ./
 RUN bun install
 
 COPY . ./
+
+# Vite inlines VITE_* variables at build time, so the API base must be supplied
+# as a build argument (docker-compose passes it in).
+ARG VITE_API_BASE_URL=http://localhost:8000
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN bun run build
 
 # Install a simple HTTP server

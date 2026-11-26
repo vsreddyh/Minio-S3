@@ -29,9 +29,10 @@ WORKDIR /app1
 COPY ./requirements.txt /app1/requirements.txt
 RUN pip3 install --no-cache-dir -r /app1/requirements.txt
 
-# Add the alias script
+# Add the alias and entrypoint scripts
 COPY add_minio_s3_aliases.sh /usr/local/bin/add_minio_s3_aliases.sh
-RUN chmod +x /usr/local/bin/add_minio_s3_aliases.sh 
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/add_minio_s3_aliases.sh /usr/local/bin/entrypoint.sh
 
 # App code
 COPY . /app1
@@ -40,10 +41,11 @@ COPY . /app1
 RUN chmod +x /app1/cronjob.sh
 
 # Configure cron job to run daily at 00:00 (midnight)
-# Using /etc/cron.d with explicit user field (root)
+# Using /etc/cron.d with explicit user field (root). cronjob.sh sources the
+# environment file written by the entrypoint and recreates the mc aliases.
 RUN echo "SHELL=/bin/bash" > /etc/cron.d/minio_sync \
  && echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> /etc/cron.d/minio_sync \
- && echo "0 0 * * * root /usr/local/bin/add_minio_s3_aliases.sh && /app1/cronjob.sh >> /var/log/cron.log 2>&1" >> /etc/cron.d/minio_sync \
+ && echo "0 0 * * * root /app1/cronjob.sh >> /var/log/cron.log 2>&1" >> /etc/cron.d/minio_sync \
  && chmod 0644 /etc/cron.d/minio_sync \
  && touch /var/log/cron.log
 
@@ -53,5 +55,5 @@ RUN echo "SHELL=/bin/bash" > /etc/cron.d/minio_sync \
 
 EXPOSE 8000
 
-# Entrypoint: set mc aliases, then start FastAPI
-ENTRYPOINT ["/bin/bash", "-lc", "/usr/sbin/cron && /usr/local/bin/add_minio_s3_aliases.sh && exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Entrypoint: persist cron env, start cron, set mc aliases, then start FastAPI
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

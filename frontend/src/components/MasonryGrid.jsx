@@ -1,5 +1,6 @@
 import React, {useEffect, useState, useImperativeHandle, forwardRef} from 'react';
 import Masonry from 'react-masonry-css';
+import { API_BASE_URL } from '../config';
 import './MasonryGrid.css';
 
 const MasonryGrid = forwardRef((props, ref) => {
@@ -11,7 +12,7 @@ const MasonryGrid = forwardRef((props, ref) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:8000/images');
+      const res = await fetch(`${API_BASE_URL}/images`);
       if (!res.ok) {
         if (res.status === 503) {
           throw new Error('Backend services not available');
