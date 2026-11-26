@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -8,6 +10,8 @@ class Image(BaseModel):
 
 
 class ImageOut(BaseModel):
-    object_url: str
+    # None when the object cannot be resolved in MinIO or S3; a single missing
+    # object should not fail the whole listing.
+    object_url: Optional[str] = None
     name: str
     createdAt: datetime

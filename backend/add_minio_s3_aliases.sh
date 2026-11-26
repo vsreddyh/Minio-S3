@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# cron does not inherit the container environment; the entrypoint persists the
+# variables this script needs to /etc/minio-sync.env.
+if [[ -f /etc/minio-sync.env ]]; then
+	# shellcheck disable=SC1091
+	source /etc/minio-sync.env
+fi
+
 # Usage:
 #   MINIO_ALIAS=minio \
 #   MINIO_ENDPOINT=http://localhost:9000 \

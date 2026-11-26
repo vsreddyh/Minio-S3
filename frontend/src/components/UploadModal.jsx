@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { API_BASE_URL } from '../config';
 import './UploadModal.css';
 
 export default function UploadModal({ onClose, onUploadSuccess }) {
@@ -54,7 +55,7 @@ export default function UploadModal({ onClose, onUploadSuccess }) {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch('http://localhost:8000/images/upload', {
+      const response = await fetch(`${API_BASE_URL}/images/upload`, {
         method: 'POST',
         body: formData,
       });
